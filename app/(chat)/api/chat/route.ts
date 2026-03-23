@@ -1,23 +1,16 @@
-import { geolocation, ipAddress } from "@vercel/functions";
-import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateId,
-  stepCountIs,
-  streamText,
-} from "ai";
-import { checkBotId } from "botid/server";
-import { after } from "next/server";
-import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import { allowedModelIds } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
+import { downloadGeoAnalysis } from "@/lib/ai/tools/download-geo-analysis";
+import { getGeoAnalysisStatus } from "@/lib/ai/tools/get-geo-analysis-status";
+import { getMe } from "@/lib/ai/tools/get-me";
+import { getProject } from "@/lib/ai/tools/get-project";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
+import { runGeoAnalysis } from "@/lib/ai/tools/run-geo-analysis";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -36,6 +29,19 @@ import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import type { ChatMessage } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import { geolocation, ipAddress } from "@vercel/functions";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  generateId,
+  stepCountIs,
+  streamText,
+} from "ai";
+import { checkBotId } from "botid/server";
+import { cookies } from "next/headers";
+import { after } from "next/server";
+import { createResumableStreamContext } from "resumable-stream";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, messages, selectedChatModel, selectedVisibilityType } =
+    const { id, message, messages, selectedChatModel, selectedVisibilityType, projectId } =
       requestBody;
 
     const [botResult, session] = await Promise.all([checkBotId(), auth()]);
@@ -119,6 +125,9 @@ export async function POST(request: Request) {
       ? (messages as ChatMessage[])
       : [...convertToUIMessages(messagesFromDb), message as ChatMessage];
 
+    const cookieStore = await cookies();
+    const jwtCookie = cookieStore.get("JWT")?.value;
+
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -126,6 +135,7 @@ export async function POST(request: Request) {
       latitude,
       city,
       country,
+      projectId,
     };
 
     if (message?.role === "user") {
@@ -157,11 +167,16 @@ export async function POST(request: Request) {
           model: getLanguageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: modelMessages,
-          stopWhen: stepCountIs(5),
+          stopWhen: stepCountIs(10),
           experimental_activeTools: isReasoningModel
             ? []
             : [
                 "getWeather",
+                "getMe",
+                "getProject",
+                "runGeoAnalysis",
+                "getGeoAnalysisStatus",
+                "downloadGeoAnalysis",
                 "createDocument",
                 "updateDocument",
                 "requestSuggestions",
@@ -175,6 +190,11 @@ export async function POST(request: Request) {
             : undefined,
           tools: {
             getWeather,
+            getMe: getMe({ session, jwtCookie }),
+            getProject: getProject({ jwtCookie }),
+            runGeoAnalysis: runGeoAnalysis({ jwtCookie }),
+            getGeoAnalysisStatus: getGeoAnalysisStatus({ jwtCookie }),
+            downloadGeoAnalysis: downloadGeoAnalysis({ jwtCookie }),
             createDocument: createDocument({ session, dataStream }),
             updateDocument: updateDocument({ session, dataStream }),
             requestSuggestions: requestSuggestions({ session, dataStream }),

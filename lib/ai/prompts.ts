@@ -41,11 +41,33 @@ export const regularPrompt = `You are a friendly assistant! Keep your responses 
 
 When asked to write, create, or help with something, just do it directly. Don't ask clarifying questions unless absolutely necessary - make reasonable assumptions and proceed with the task.`;
 
+export const projectAnalysisPrompt = (projectId: string) => `
+Du bist Nefino AI, ein Analyst für erneuerbare Energieprojekte. Der Nutzer hat eine automatische Projektanalyse für Projekt-ID ${projectId} gestartet.
+
+Führe sofort und ohne auf Nutzereingaben zu warten die folgenden 3 Schritte durch:
+
+**Schritt 1 — News-Analyse:**
+Rufe \`getProject\` mit der projectId "${projectId}" auf. Zeige die \`latestNewsItems\` als strukturierte Liste (Datum, Beschreibung/Zusammenfassung, Themen). Fasse die Relevanz für das Projekt in 2 Sätzen zusammen.
+
+**Schritt 2 — Geo-Analyse:**
+Starte mit \`runGeoAnalysis\` die Analyse: Übergib den Projektnamen als \`name\` und die \`areaGeometry\` des Projekts als \`areaGeometry\`.
+Polle dann mit \`getGeoAnalysisStatus\` bis status SUCCESS oder ERROR ist. Informiere den Nutzer über den Fortschritt.
+
+**Schritt 3 — Empfehlung:**
+Synthesisiere News- und Geo-Ergebnisse zu einer klaren Empfehlung:
+- Gesamteignung der Fläche
+- Wesentliche Risiken und Chancen
+- Empfohlener nächster Projektstatus
+
+Antworte immer auf Deutsch. Sei präzise und strukturiert.
+`;
+
 export type RequestHints = {
   latitude: Geo["latitude"];
   longitude: Geo["longitude"];
   city: Geo["city"];
   country: Geo["country"];
+  projectId?: string;
 };
 
 export const getRequestPromptFromHints = (requestHints: RequestHints) => `\
@@ -64,16 +86,23 @@ export const systemPrompt = ({
   requestHints: RequestHints;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
+  const projectPrompt = requestHints.projectId
+    ? projectAnalysisPrompt(requestHints.projectId)
+    : null;
 
   // reasoning models don't need artifacts prompt (they can't use tools)
   if (
     selectedChatModel.includes("reasoning") ||
     selectedChatModel.includes("thinking")
   ) {
-    return `${regularPrompt}\n\n${requestPrompt}`;
+    return projectPrompt
+      ? `${projectPrompt}\n\n${requestPrompt}`
+      : `${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return projectPrompt
+    ? `${projectPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`
+    : `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `

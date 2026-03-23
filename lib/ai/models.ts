@@ -1,5 +1,5 @@
 // Curated list of top models from Vercel AI Gateway
-export const DEFAULT_CHAT_MODEL = "openai/gpt-4.1-mini";
+export const DEFAULT_CHAT_MODEL = "anthropic/claude-sonnet-4-6";
 
 export type ChatModel = {
   id: string;
@@ -10,6 +10,12 @@ export type ChatModel = {
 
 export const chatModels: ChatModel[] = [
   // Anthropic
+  {
+    id: "anthropic/claude-sonnet-4-6",
+    name: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    description: "Powerful and balanced, ideal for complex tasks",
+  },
   {
     id: "anthropic/claude-haiku-4.5",
     name: "Claude Haiku 4.5",

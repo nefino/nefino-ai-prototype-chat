@@ -39,6 +39,7 @@ export function Chat({
   initialVisibilityType,
   isReadonly,
   autoResume,
+  projectId,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -46,6 +47,7 @@ export function Chat({
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   autoResume: boolean;
+  projectId?: string;
 }) {
   const router = useRouter();
 
@@ -126,6 +128,7 @@ export function Chat({
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibilityType,
+            ...(projectId ? { projectId } : {}),
             ...request.body,
           },
         };
@@ -170,6 +173,19 @@ export function Chat({
       window.history.replaceState({}, "", `/chat/${id}`);
     }
   }, [query, sendMessage, hasAppendedQuery, id]);
+
+  const hasStartedAnalysisRef = useRef(false);
+
+  useEffect(() => {
+    if (projectId && !hasStartedAnalysisRef.current && initialMessages.length === 0) {
+      hasStartedAnalysisRef.current = true;
+      sendMessage({
+        role: "user" as const,
+        parts: [{ type: "text", text: "Bitte starte die Projektanalyse." }],
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,

@@ -1,9 +1,10 @@
 "use client";
-import type { UseChatHelpers } from "@ai-sdk/react";
-import { useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
+import type { UseChatHelpers } from "@ai-sdk/react";
+import type { ToolUIPart } from "ai";
+import { useState } from "react";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -16,6 +17,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "./elements/tool";
+import { GeoAnalysisButton } from "./geo-analysis-button";
 import { SparklesIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
@@ -45,6 +47,14 @@ const PurePreviewMessage = ({
   requiresScrollPadding: boolean;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
+
+  const successfulAnalysisId = message.parts
+    .filter((p) => p.type === "tool-getGeoAnalysisStatus")
+    .map((p) => {
+      const out = (p as { state?: string; output?: Record<string, unknown> }).output;
+      return out?.status === "SUCCESS" ? (out.analysisId as string | undefined) : undefined;
+    })
+    .find(Boolean);
 
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
@@ -343,8 +353,141 @@ const PurePreviewMessage = ({
               );
             }
 
+            if (type === "tool-getGeoAnalysisStatus") {
+              const { toolCallId, state } = part;
+              const output = state === "output-available" ? (part.output as Record<string, unknown> | undefined) : undefined;
+
+              return (
+                <Tool className="w-full" defaultOpen={false} key={toolCallId}>
+                  <ToolHeader state={state} type="tool-getGeoAnalysisStatus" />
+                  <ToolContent>
+                    {state === "input-available" && (
+                      <ToolInput input={part.input} />
+                    )}
+                    {state === "output-available" && (
+                      <ToolOutput
+                        errorText={undefined}
+                        output={
+                          output && "error" in output ? (
+                            <div className="rounded border p-2 text-red-500">
+                              Error: {String(output.error)}
+                            </div>
+                          ) : (
+                            <pre className="overflow-auto whitespace-pre-wrap text-xs">
+                              {JSON.stringify(output, null, 2)}
+                            </pre>
+                          )
+                        }
+                      />
+                    )}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+
+            if (type.startsWith("tool-")) {
+              const toolPart = part as {
+                toolCallId: string;
+                state: ToolUIPart["state"];
+                input?: unknown;
+                output?: unknown;
+                errorText?: string;
+                approval?: { id: string; approved?: boolean };
+              };
+              const { toolCallId, state } = toolPart;
+              const approvalId = toolPart.approval?.id;
+              const isDenied =
+                state === "output-denied" ||
+                (state === "approval-responded" &&
+                  toolPart.approval?.approved === false);
+              return (
+                <Tool
+                  className="w-full"
+                  defaultOpen={state === "approval-requested"}
+                  key={toolCallId}
+                >
+                  <ToolHeader state={state} type={type as ToolUIPart["type"]} />
+                  <ToolContent>
+                    {(state === "input-available" ||
+                      state === "approval-requested") && (
+                      <ToolInput input={toolPart.input} />
+                    )}
+                    {state === "output-available" && (
+                      <ToolOutput
+                        errorText={undefined}
+                        output={
+                          toolPart.output &&
+                          typeof toolPart.output === "object" &&
+                          "error" in toolPart.output ? (
+                            <div className="rounded border p-2 text-red-500">
+                              Error:{" "}
+                              {String(
+                                (toolPart.output as { error: unknown }).error
+                              )}
+                            </div>
+                          ) : (
+                            <pre className="overflow-auto whitespace-pre-wrap text-xs">
+                              {JSON.stringify(toolPart.output, null, 2)}
+                            </pre>
+                          )
+                        }
+                      />
+                    )}
+                    {state === "output-error" && (
+                      <ToolOutput
+                        errorText={toolPart.errorText ?? "Unknown error"}
+                        output={null}
+                      />
+                    )}
+                    {state === "approval-requested" &&
+                      approvalId &&
+                      !isReadonly && (
+                        <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+                          <button
+                            className="rounded-md px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+                            onClick={() => {
+                              addToolApprovalResponse({
+                                id: approvalId,
+                                approved: false,
+                                reason: "User denied",
+                              });
+                            }}
+                            type="button"
+                          >
+                            Deny
+                          </button>
+                          <button
+                            className="rounded-md bg-primary px-3 py-1.5 text-primary-foreground text-sm transition-colors hover:bg-primary/90"
+                            onClick={() => {
+                              addToolApprovalResponse({
+                                id: approvalId,
+                                approved: true,
+                              });
+                            }}
+                            type="button"
+                          >
+                            Allow
+                          </button>
+                        </div>
+                      )}
+                    {isDenied && (
+                      <div className="px-4 py-3 text-muted-foreground text-sm">
+                        Tool execution was denied.
+                      </div>
+                    )}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+
             return null;
           })}
+
+          {successfulAnalysisId && (
+            <div className="self-start">
+              <GeoAnalysisButton analysisId={successfulAnalysisId} />
+            </div>
+          )}
 
           {!isReadonly && (
             <MessageActions

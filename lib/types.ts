@@ -1,7 +1,8 @@
+import type { ArtifactKind } from "@/components/artifact";
 import type { InferUITool, UIMessage } from "ai";
 import { z } from "zod";
-import type { ArtifactKind } from "@/components/artifact";
 import type { createDocument } from "./ai/tools/create-document";
+import type { getGeoAnalysisStatus } from "./ai/tools/get-geo-analysis-status";
 import type { getWeather } from "./ai/tools/get-weather";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { updateDocument } from "./ai/tools/update-document";
@@ -21,12 +22,16 @@ type updateDocumentTool = InferUITool<ReturnType<typeof updateDocument>>;
 type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
+type getGeoAnalysisStatusTool = InferUITool<
+  ReturnType<typeof getGeoAnalysisStatus>
+>;
 
 export type ChatTools = {
   getWeather: weatherTool;
   createDocument: createDocumentTool;
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
+  getGeoAnalysisStatus: getGeoAnalysisStatusTool;
 };
 
 export type CustomUIDataTypes = {
